@@ -1,0 +1,216 @@
+<pre>
+The Hotel Data Analysis and Property Optimization Project is a comprehensive data analysis initiative aimed at optimizing the performance and profitability of a chain of hotels.
+This project involves in-depth data analysis of various aspects of the hotel business, ranging from occupancy rates and revenue generation to booking behaviors and guest
+satisfaction. The primary goal of this project is to identify trends, patterns, and opportunities that will help the hotel management make 
+informed decisions and implement effective strategies to improve overall performance and guest satisfaction
+
+```
+1- What is the overall occupancy rate for each hotel can you identify which hotels have consistently high or low occupancy rates?
+
+SELECT
+    dh.property_name AS hotel_name,
+    SUM(fb.successful_bookings) AS total_bookings,
+    dh.category AS hotel_category,
+    SUM(fb.capacity) AS total_capacity,
+    ROUND((SUM(fb.successful_bookings) / SUM(fb.capacity)) * 100, 2) AS occupancy_rate
+FROM facts_agg_bookings fb
+JOIN dim_hotels dh ON fb.property_id = dh.property_id  
+GROUP BY dh.property_name, dh.category
+ORDER BY occupancy_rate DESC
+limit 10;
+
+2- Which room category had the highest revenue generated across all properties, 
+and can you list the top three properties that contributed the most to this revenue?
+
+select fb.property_id , dm.room_id , sum(revenue_generated) as total_revenue_generated
+from facts_bookings fb 
+join dim_rooms dm 
+on fb.room_category = dm.room_id
+group by fb.property_id , dm.room_id 
+order by total_revenue_generated desc 
+limit 5 
+
+3-- calculate the average ratings given by guests for each property. 
+
+select dh.property_name , avg(fb.ratings_given) as average_rating 
+from facts_bookings fb 
+join dim_hotels dh 
+on fb.property_id  = dh.property_id
+group by dh.property_name 
+order by average_rating desc
+
+
+
+
+5- What is the overall revenue realized percentage across all properties, 
+and can you identify properties with consistently low revenue realization?
+
+select 
+	dh.property_name AS hotel_name,
+    SUM(fb.revenue_realized) AS total_revenue_realized,
+    SUM(fb.revenue_generated) AS total_revenue_generated,
+    ROUND((SUM(fb.revenue_realized) / SUM(fb.revenue_generated)) * 100, 2) AS revenue_realized_percentage
+from facts_bookings fb 
+join dim_hotels dh 
+on fb.property_id = dh.property_id
+group by dh.property_name
+
+6-  What is the average daily revenue generated for each hotel during a specific date range?
+
+select 
+	dh.property_name AS hotel_name,
+   avg(revenue_generated) as avg_total_revenue_generated ,
+   avg(revenue_realized) as avg_total_revenue_realized
+from facts_bookings fb 
+join dim_hotels dh 
+on fb.property_id = dh.property_id
+group by dh.property_name
+
+7- How does the occupancy rate vary by hotel category and  room categories ?
+
+select 
+    dh.category as Hotel_category ,
+    dr.room_class as room_category,
+    SUM(fab.successful_bookings) AS total_bookings,
+    SUM(fab.capacity) AS total_capacity,
+    ROUND((SUM(fab.successful_bookings) / SUM(fab.capacity)) * 100, 2) AS occupancy_rate
+from facts_agg_bookings fab 
+join dim_hotels dh 
+on fab.property_id = dh.property_id 
+join dim_rooms dr
+12- Calculate MONTH ON MONTH Revenue 
+WITH MonthlyRevenue AS (
+    SELECT DATE_FORMAT(hfb.booking_date, '%Y-%m') AS Month, SUM(hfb.revenue_realized) AS TotalRevenue
+    FROM hospitallity_domain.facts_bookings hfb
+    JOIN hospitallity_domain.dim_date hdd ON hfb.booking_date = hdd.date
+    GROUP BY DATE_FORMAT(hfb.booking_date, '%Y-%m')
+)
+SELECT current.Month, current.TotalRevenue AS CurrentMonthRevenue, 
+	LAG(current.TotalRevenue) OVER (ORDER BY current.Month) AS PreviousMonthRevenue,
+    (current.TotalRevenue - LAG(current.TotalRevenue) OVER (ORDER BY current.Month)) / LAG(current.TotalRevenue) OVER (ORDER BY current.Month) AS RevenueGrowthRate
+FROM MonthlyRevenue current
+ORDER BY current.Month;
+
+13- Can you identify properties with consistently high revenue realization, and are there common attributes among them?
+
+WITH PropertyRevenueRealization AS (
+    SELECT property_id, AVG(revenue_realized) AS avg_revenue_realized
+    FROM facts_bookings
+    GROUP BY property_id
+    HAVING AVG(revenue_realized) > 0
+)
+SELECT p.property_name, p.category, p.city,
+    pr.avg_revenue_realized AS average_revenue_realized
+FROM PropertyRevenueRealization pr
+JOIN dim_hotels p
+ON pr.property_id = p.property_id;
+
+14- What is the total number of unique properties in each city?
+
+SELECT city, COUNT(DISTINCT property_id) AS unique_properties_count
+FROM dim_hotels
+GROUP BY city;
+
+15- Which room category has the highest average number of guests?
+
+SELECT room_category, AVG(no_guests) AS average_guests
+FROM facts_bookings
+GROUP BY room_category
+ORDER BY average_guests DESC
+
+16- Calculate WEEK ON WEEK REVENUE 
+WITH WeeklyRevenue AS (
+    SELECT DATE_FORMAT(hfb.booking_date, '%X-%V') AS Week, SUM(hfb.revenue_realized) AS TotalRevenue
+    FROM hospitallity_domain.facts_bookings hfb
+    JOIN hospitallity_domain.dim_date hdd ON hfb.booking_date = hdd.date
+    GROUP BY DATE_FORMAT(hfb.booking_date, '%X-%V')
+)
+SELECT
+    current.Week,
+    current.TotalRevenue AS CurrentWeekRevenue,
+    LAG(current.TotalRevenue) OVER (ORDER BY current.Week) AS PreviousWeekRevenue,
+    (current.TotalRevenue - LAG(current.TotalRevenue) OVER (ORDER BY current.Week)) / LAG(current.TotalRevenue) OVER (ORDER BY current.Week) AS RevenueGrowthRate
+FROM WeeklyRevenue current
+ORDER BY current.Week;
+
+17- What is the total revenue generated for each hotel property, and how does it relate to the number of successful bookings?
+
+WITH PropertyRevenue AS (
+    SELECT fb.property_id, dh.property_name, SUM(revenue_generated) AS total_revenue
+    FROM facts_bookings fb
+    JOIN dim_hotels dh
+    ON fb.property_id = dh.property_id
+    GROUP BY fb.property_id, dh.property_name
+),
+PropertySuccessfulBookings AS (
+    SELECT property_id, COUNT(booking_id) AS total_successful_bookings
+    FROM facts_bookings
+    WHERE booking_status = 'Checked Out'
+    GROUP BY property_id
+)
+SELECT
+    pr.property_id,
+    pr.property_name,
+    pr.total_revenue,
+    ps.total_successful_bookings,
+    pr.total_revenue / ps.total_successful_bookings AS revenue_per_successful_booking
+FROm propertyRevenue pr
+JOIn PropertySuccessfulBookings ps
+On pr.property_id = ps.property_id;
+
+18- Can you identify properties with a high number of "No Show" bookings?
+
+SELECT dh.property_id, dh.property_name, COUNT(booking_id) AS no_show_bookings_count
+FROM facts_bookings fb
+JOIN dim_hotels dh
+On fb.property_id = dh.property_id
+WHERE booking_status = 'No Show'
+GROUP BY dh.property_id, dh.property_name
+ORDER BY no_show_bookings_count DESC;
+
+19- How does the hotel category impact the average revenue per guest across all properties? 
+
+SELECT dh.category AS hotel_category, AVG(fb.revenue_generated / fb.no_guests) AS average_revenue_per_guest
+FROM facts_bookings fb
+JOIN dim_hotels dh
+ON fb.property_id = dh.property_id
+WHERE fb.no_guests > 0
+GROUP BY dh.category
+ORDER BY average_revenue_per_guest DESC;
+
+
+
+
+20- identify properties with a high number of direct online bookings ? 
+
+SELECT dh.property_id, dh.property_name, COUNT(booking_id) AS direct_online_bookings_count
+FROM facts_bookings fb
+JOIN dim_hotels dh
+ON fb.property_id = dh.property_id
+WHERE booking_platform = 'direct online'
+GROUP BY dh.property_id, dh.property_name
+ORDER BY direct_online_bookings_count DESC;
+
+21- What is the distribution of booking statuses  across different room categories?
+
+SELECT fb.room_category, booking_status, COUNT(booking_id) AS booking_count
+FROM facts_bookings fb
+GROUP BY fb.room_category, booking_status
+ORDER BY fb.room_category, booking_count DESC;
+
+23-  Can you identify properties with consistently low capacity utilization, and what actions can be taken to improve it? 
+
+```
+WITH CapacityUtilization AS (
+    SELECT
+        dh.property_id,
+        dh.property_name,
+        ROUND((SUM(fb.successful_bookings) * 100.0 / SUM(fb.capacity)), 2) AS average_capacity_utilization
+    FROM facts_agg_bookings fb
+    JOIN dim_hotels dh ON fb.property_id = dh.property_id
+    GROUP BY dh.property_id, dh.property_name
+)
+SELECT property_id, property_name, average_capacity_utilization
+FROM CapacityUtilization
+WHERE average_capacity_utilization < 50;
+```
